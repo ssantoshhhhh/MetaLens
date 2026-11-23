@@ -1,6 +1,3 @@
-import { randomUUID } from "node:crypto"
-import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises"
-import { tmpdir } from "node:os"
 import path from "node:path"
 import {
   MAX_UPLOAD_SIZE_BYTES,
@@ -78,11 +75,14 @@ export function validateUpload(input: {
   filename: string
   declaredMime: string
   bytes: Uint8Array
+  /** Full file size when `bytes` holds only the file's leading signature. */
+  size?: number
 }): ValidatedUpload {
-  if (input.bytes.byteLength === 0) {
+  const size = input.size ?? input.bytes.byteLength
+  if (size === 0 || input.bytes.byteLength === 0) {
     throw new ApiError(400, "empty_file", "The uploaded file is empty.")
   }
-  if (input.bytes.byteLength > MAX_UPLOAD_SIZE_BYTES) throw tooLarge()
+  if (size > MAX_UPLOAD_SIZE_BYTES) throw tooLarge()
 
   const filename = sanitizeFilename(input.filename)
   const extension = path.extname(filename).slice(1).toLowerCase()
@@ -135,24 +135,34 @@ export function validateUpload(input: {
   }
 }
 
-/** Runs work on a private random temp file, which is always deleted afterwards. */
-export async function withTempFile<T>(
-  bytes: Uint8Array,
-  extension: string,
-  work: (filePath: string) => Promise<T>,
-) {
-  const directory = await mkdtemp(
-    path.join(/*turbopackIgnore: true*/ tmpdir(), "metalens-"),
-  )
-  try {
-    await chmod(directory, 0o700)
-    const filePath = path.join(
-      /*turbopackIgnore: true*/ directory,
-      `${randomUUID()}.${extension}`,
+/** Reads a JSON body while enforcing a byte limit as data arrives. */
+export async function readLimitedJson(request: Request, maxBytes: number) {
+  const declared = Number(request.headers.get("content-length") ?? 0)
+  const metadataTooLarge = () =>
+    new ApiError(
+      413,
+      "metadata_too_large",
+      "This image has too much metadata to process.",
     )
-    await writeFile(filePath, bytes, { mode: 0o600, flag: "wx" })
-    return await work(filePath)
-  } finally {
-    await rm(directory, { recursive: true, force: true })
+  if (declared > maxBytes) throw metadataTooLarge()
+  if (!request.body)
+    throw new ApiError(400, "invalid_request", "Missing request body.")
+  const reader = request.body.getReader()
+  const chunks: Uint8Array[] = []
+  let received = 0
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    received += value.byteLength
+    if (received > maxBytes) {
+      await reader.cancel()
+      throw metadataTooLarge()
+    }
+    chunks.push(value)
+  }
+  try {
+    return JSON.parse(Buffer.concat(chunks).toString("utf8")) as unknown
+  } catch {
+    throw new ApiError(400, "invalid_request", "The request could not be read.")
   }
 }

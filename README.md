@@ -6,7 +6,7 @@ MetaLens only reports values found in the file. Missing values are shown as unav
 
 ## Quick start
 
-Requires Node.js 24 or newer and npm 11 or newer. ExifTool is bundled for macOS and Linux (Perl required).
+Requires Node.js 24 or newer and npm 11 or newer. ExifTool runs in the browser through WebAssembly, so no system install is needed.
 
 ```bash
 npm install
@@ -37,7 +37,6 @@ Copy `.env.example` to `.env` and set only what you need.
 | `DATABASE_URL` and `AUTH_SECRET` | Accounts and saved history                  |
 | `ANTHROPIC_API_KEY`              | AI visual analysis                          |
 | `ANTHROPIC_MODEL`                | AI model override                           |
-| `EXIFTOOL_PATH`                  | A system ExifTool                           |
 | `NOMINATIM_URL`                  | A self-hosted geocoder                      |
 | `NOMINATIM_USER_AGENT`           | Geocoder identification (set in production) |
 
@@ -105,6 +104,6 @@ The full contract is in [`docs/openapi.yaml`](docs/openapi.yaml).
 ## Production notes
 
 - Run behind a reverse proxy that overwrites `X-Forwarded-For`, so clients cannot bypass per-client rate limits.
-- Rate limits and temporary analyses live in process memory. Use a single instance, or add shared storage before scaling out.
+- Rate limits live in process memory, so they apply per instance. Temporary analyses stay in the browser tab.
 - HEIC metadata is supported. The server may not decode HEIC pixels, so its preview depends on an embedded thumbnail or browser support.
 - PDF reports cover Latin, Greek, Cyrillic, and other DejaVu scripts. CJK text may not render in PDF, but is complete in JSON and CSV.

@@ -1,15 +1,10 @@
 import sharp from "sharp"
 import { aspectRatio } from "@/lib/format"
 import type { ImageProperties } from "@/types/analysis"
-import { readEmbeddedPreview } from "@/server/services/metadata/exiftool"
 import type { MetadataIndex } from "@/server/services/metadata/normalize"
 
-/** Protects the decoder from decompression bombs. */
-const MAX_INPUT_PIXELS = 200_000_000
 const PREVIEW_SIZE = 1024
 sharp.cache(false)
-
-const options = { limitInputPixels: MAX_INPUT_PIXELS, failOn: "error" } as const
 
 export type SharpInfo = {
   width: number | null
@@ -18,25 +13,6 @@ export type SharpInfo = {
   depth: string | null
   hasAlpha: boolean | null
   iccDescription: string | null
-}
-
-export async function readImageInfo(
-  filePath: string,
-): Promise<SharpInfo | null> {
-  try {
-    const info = await sharp(filePath, options).metadata()
-    return {
-      width: info.width ?? null,
-      height: info.height ?? null,
-      space: info.space ?? null,
-      depth: info.depth ?? null,
-      hasAlpha: info.hasAlpha ?? null,
-      iccDescription: null,
-    }
-  } catch {
-    // HEIC and some other files need ExifTool's values instead.
-    return null
-  }
 }
 
 function positiveNumber(value: unknown) {
@@ -54,7 +30,10 @@ export function buildImageProperties(
       index.field(
         "File:ImageWidth",
         "PNG:ImageWidth",
+        "RIFF:ImageWidth",
+        "GIF:ImageWidth",
         "EXIF:ExifImageWidth",
+        "EXIF:ImageWidth",
         "QuickTime:ImageWidth",
       )?.rawValue,
     )
@@ -64,7 +43,10 @@ export function buildImageProperties(
       index.field(
         "File:ImageHeight",
         "PNG:ImageHeight",
+        "RIFF:ImageHeight",
+        "GIF:ImageHeight",
         "EXIF:ExifImageHeight",
+        "EXIF:ImageHeight",
         "QuickTime:ImageHeight",
       )?.rawValue,
     )
@@ -119,7 +101,11 @@ export function buildImageProperties(
     ),
     orientation: index.text("EXIF:Orientation", "XMP:Orientation"),
     iccProfile: index.text("ICC_Profile:ProfileDescription"),
-    hasAlpha: info?.hasAlpha ?? null,
+    hasAlpha:
+      info?.hasAlpha ??
+      (index.text("PNG:ColorType")
+        ? /alpha/i.test(index.text("PNG:ColorType") ?? "")
+        : null),
     hasEmbeddedThumbnail:
       Boolean(
         index.field(
@@ -134,35 +120,6 @@ export function buildImageProperties(
           /(Thumbnail|Preview)Image$/.test(field.name) &&
           field.status === "binary",
       ),
-  }
-}
-
-async function encodePreview(input: string | Buffer) {
-  const buffer = await sharp(input, options)
-    .rotate()
-    .resize(PREVIEW_SIZE, PREVIEW_SIZE, {
-      fit: "inside",
-      withoutEnlargement: true,
-    })
-    .webp({ quality: 72 })
-    .toBuffer()
-  return `data:image/webp;base64,${buffer.toString("base64")}`
-}
-
-/** Creates a metadata-free preview that is returned once and never stored on the server. */
-export async function createPreview(filePath: string) {
-  try {
-    return { preview: await encodePreview(filePath), decoded: true }
-  } catch {
-    const embedded = await readEmbeddedPreview(filePath)
-    if (embedded) {
-      try {
-        return { preview: await encodePreview(embedded), decoded: false }
-      } catch {
-        // Fall through to no preview.
-      }
-    }
-    return { preview: null, decoded: false }
   }
 }
 

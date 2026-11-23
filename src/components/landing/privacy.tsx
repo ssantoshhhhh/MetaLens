@@ -2,9 +2,9 @@ import { Check, ShieldCheck } from "lucide-react"
 import { SectionHeading } from "@/components/landing/section-heading"
 
 const commitments = [
-  "Uploaded images are processed temporarily and not kept by default.",
+  "Your image is read in your browser. Its extracted metadata is sent to the server for analysis and not kept by default.",
   "Embedded metadata is treated as data and never executed.",
-  "Analyses are private to your browser or account, and temporary results expire after 30 minutes.",
+  "Temporary results stay in your browser tab and expire after 30 minutes. Saved results are private to your account.",
   "The map and place lookup run only when you ask, because they send coordinates to OpenStreetMap.",
 ]
 

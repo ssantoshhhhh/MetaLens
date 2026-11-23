@@ -43,5 +43,8 @@ next-env.d.ts
 # prisma
 /src/generated/
 
+# copied from node_modules at build time
+/public/exiftool/
+
 # env examples are safe to commit
 !.env.example

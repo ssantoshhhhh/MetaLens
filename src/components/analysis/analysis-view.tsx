@@ -219,6 +219,9 @@ export function AnalysisView({ id }: { id: string }) {
       router.push("/")
     },
   })
+  const download = useMutation({
+    mutationFn: (format: string) => api.downloadReport(query.data!, format),
+  })
 
   if (query.isPending) return <DashboardSkeleton />
   if (query.isError) {
@@ -233,7 +236,7 @@ export function AnalysisView({ id }: { id: string }) {
         </h1>
         <p className="mt-2 text-sm text-muted-foreground">
           {missing
-            ? "Temporary analyses are deleted after 30 minutes and are private to the browser that created them."
+            ? "Temporary analyses are deleted after 30 minutes and stay in the browser tab that created them."
             : query.error.message}
         </p>
         <Button asChild className="mt-5">
@@ -247,7 +250,6 @@ export function AnalysisView({ id }: { id: string }) {
   const { file, device, dateTime, location } = analysis
   const deviceName =
     [device.make, device.model].filter(Boolean).join(" ") || null
-  const report = (format: string) => `/api/images/${id}/report?format=${format}`
 
   return (
     <div className="mx-auto w-full max-w-6xl space-y-5 px-4 py-8 sm:px-6">
@@ -291,10 +293,14 @@ export function AnalysisView({ id }: { id: string }) {
                 </Link>
               </Button>
               {(["pdf", "csv", "json"] as const).map((format) => (
-                <Button key={format} asChild size="sm" variant="outline">
-                  <a href={report(format)}>
-                    <Download aria-hidden /> {format.toUpperCase()}
-                  </a>
+                <Button
+                  key={format}
+                  size="sm"
+                  variant="outline"
+                  disabled={download.isPending}
+                  onClick={() => download.mutate(format)}
+                >
+                  <Download aria-hidden /> {format.toUpperCase()}
                 </Button>
               ))}
               <Button
@@ -306,9 +312,9 @@ export function AnalysisView({ id }: { id: string }) {
                 <Trash2 aria-hidden /> Delete
               </Button>
             </div>
-            {remove.isError ? (
+            {remove.isError || download.isError ? (
               <p role="alert" className="mt-2 text-sm text-destructive">
-                {remove.error.message}
+                {(remove.error ?? download.error)?.message}
               </p>
             ) : null}
           </div>

@@ -3,7 +3,8 @@ import type { NextConfig } from "next"
 const isDev = process.env.NODE_ENV !== "production"
 const contentSecurityPolicy = [
   "default-src 'self'",
-  `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
+  // wasm-unsafe-eval lets the in-browser ExifTool run without allowing JS eval.
+  `script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'${isDev ? " 'unsafe-eval'" : ""}`,
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob: https://tile.openstreetmap.org",
   "font-src 'self'",
@@ -29,6 +30,13 @@ const nextConfig: NextConfig = {
   },
   async headers() {
     return [
+      {
+        source: "/exiftool/:path*",
+        headers: [
+          { key: "Cache-Control", value: "public, max-age=604800" },
+          { key: "Content-Type", value: "application/wasm" },
+        ],
+      },
       {
         source: "/:path*",
         headers: [

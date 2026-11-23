@@ -12,18 +12,10 @@ import { ApiError, notFound } from "@/server/errors"
 import type { Principal } from "@/server/http"
 
 const TTL_MS = 30 * 60 * 1000
-const MAX_RECORDS = 200
 
-type MemoryRecord = {
-  ownerKey: string
-  analysis: ImageAnalysis
-  expiresAt: number
-}
 const holder = globalThis as typeof globalThis & {
-  __mlStore?: Map<string, MemoryRecord>
   __mlPrisma?: PrismaClient
 }
-const memory = (holder.__mlStore ??= new Map())
 
 export function db() {
   const connectionString = process.env.DATABASE_URL
@@ -32,17 +24,6 @@ export function db() {
   return (holder.__mlPrisma ??= new PrismaClient({
     adapter: new PrismaPg({ connectionString }),
   }))
-}
-
-function purge(now = Date.now()) {
-  for (const [id, record] of memory) {
-    if (record.expiresAt <= now) memory.delete(id)
-  }
-  while (memory.size >= MAX_RECORDS) {
-    const oldest = memory.keys().next().value
-    if (!oldest) break
-    memory.delete(oldest)
-  }
 }
 
 function encryptionKey() {
@@ -84,7 +65,6 @@ export function decryptPayload(id: string, payload: string): ImageAnalysis {
 
 export async function saveAnalysis(
   analysis: ImageAnalysis,
-  ownerKey: string,
   userId: string | null,
   saveToHistory: boolean,
 ) {
@@ -109,11 +89,11 @@ export async function saveAnalysis(
     })
     return saved
   }
-  purge()
-  const expiresAt = Date.now() + TTL_MS
-  const stored = { ...analysis, expiresAt: new Date(expiresAt).toISOString() }
-  memory.set(stored.id, { ownerKey, analysis: stored, expiresAt })
-  return stored
+  // Temporary analyses are returned to the browser and never kept on the server.
+  return {
+    ...analysis,
+    expiresAt: new Date(Date.now() + TTL_MS).toISOString(),
+  }
 }
 
 async function findSaved(id: string, userId: string | null) {
@@ -126,9 +106,6 @@ async function findSaved(id: string, userId: string | null) {
 }
 
 export async function getAnalysis(id: string, principal: Principal) {
-  purge()
-  const record = memory.get(id)
-  if (record && record.ownerKey === principal.ownerKey) return record.analysis
   const saved = await findSaved(id, principal.userId)
   if (!saved) throw notFound()
   return saved
@@ -140,24 +117,14 @@ export async function updateAnalysis(
   change: (analysis: ImageAnalysis) => ImageAnalysis,
 ) {
   const updated = change(await getAnalysis(id, principal))
-  const record = memory.get(id)
-  if (record && record.ownerKey === principal.ownerKey) {
-    record.analysis = updated
-  } else {
-    await db().imageAnalysis.update({
-      where: { id },
-      data: { encryptedPayload: encryptPayload(updated) },
-    })
-  }
+  await db().imageAnalysis.update({
+    where: { id },
+    data: { encryptedPayload: encryptPayload(updated) },
+  })
   return updated
 }
 
 export async function deleteAnalysis(id: string, principal: Principal) {
-  const record = memory.get(id)
-  if (record && record.ownerKey === principal.ownerKey) {
-    memory.delete(id)
-    return
-  }
   if (!principal.userId || !process.env.DATABASE_URL) throw notFound()
   const result = await db().imageAnalysis.deleteMany({
     where: { id, history: { is: { userId: principal.userId } } },

@@ -228,12 +228,12 @@ export function UploadPanel() {
             ) : null}
             {busy ? (
               <div className="mt-4" role="status" aria-live="polite">
-                <Progress value={progress} aria-label="Upload progress" />
+                <Progress value={progress} aria-label="Analysis progress" />
                 <p className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
                   <Loader2 className="size-3 animate-spin" aria-hidden />
-                  {progress < 100
-                    ? `Uploading ${progress}%`
-                    : "Extracting metadata…"}
+                  {progress < 70
+                    ? "Reading metadata in your browser…"
+                    : "Analyzing metadata…"}
                 </p>
               </div>
             ) : (

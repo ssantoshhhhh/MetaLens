@@ -1,23 +1,43 @@
 import { ApiError } from "@/server/errors"
-import { apiRoute, ensureOwnerCookie, getPrincipal } from "@/server/http"
+import { apiRoute, getPrincipal } from "@/server/http"
 import { runAnalysis } from "@/server/services/pipeline"
-import { readLimitedFormData } from "@/server/services/upload"
+import { readLimitedJson } from "@/server/services/upload"
 import { saveAnalysis } from "@/server/store"
+
+/** Stays below Vercel's 4.5 MB function payload limit. */
+const MAX_BODY_BYTES = 4 * 1024 * 1024
+const MAX_HEADER_BYTES = 64
+
+const invalid = () =>
+  new ApiError(400, "invalid_request", "The metadata request is invalid.")
 
 export const POST = apiRoute(
   async (request) => {
-    const form = await readLimitedFormData(request)
-    const file = form.get("file")
-    if (!(file instanceof File)) {
-      throw new ApiError(
-        400,
-        "missing_file",
-        "Attach an image in the file field.",
-      )
+    const body = (await readLimitedJson(request, MAX_BODY_BYTES)) as Record<
+      string,
+      unknown
+    > | null
+    const record = body?.record
+    if (
+      !body ||
+      typeof record !== "object" ||
+      record === null ||
+      Array.isArray(record) ||
+      typeof body.filename !== "string" ||
+      typeof body.tempName !== "string" ||
+      typeof body.mimeType !== "string" ||
+      typeof body.header !== "string" ||
+      typeof body.size !== "number" ||
+      !Number.isSafeInteger(body.size) ||
+      body.size < 0
+    ) {
+      throw invalid()
     }
-    const lastModified = Number(form.get("lastModified"))
+    const header = new Uint8Array(Buffer.from(body.header, "base64"))
+    if (header.byteLength > MAX_HEADER_BYTES) throw invalid()
+
     const principal = getPrincipal(request)
-    const saveToHistory = form.get("saveToHistory") === "true"
+    const saveToHistory = body.saveToHistory === true
     if (saveToHistory && !principal.userId) {
       throw new ApiError(
         401,
@@ -25,26 +45,19 @@ export const POST = apiRoute(
         "Sign in to save analyses to history.",
       )
     }
-
-    const { analysis, preview } = await runAnalysis({
-      bytes: new Uint8Array(await file.arrayBuffer()),
-      filename: file.name,
-      declaredMime: file.type,
+    const lastModified = Number(body.lastModified)
+    const analysis = runAnalysis({
+      record: record as Record<string, unknown>,
+      tempName: body.tempName,
+      header,
+      size: body.size,
+      filename: body.filename,
+      declaredMime: body.mimeType,
       clientLastModified: lastModified > 0 ? lastModified : null,
+      decoded: body.decoded === true,
     })
-    const { ownerKey, cookie } = ensureOwnerCookie(request, principal)
-    const saved = await saveAnalysis(
-      analysis,
-      ownerKey,
-      principal.userId,
-      saveToHistory,
-    )
-    const response = Response.json(
-      { analysis: saved, preview },
-      { status: 201 },
-    )
-    if (cookie) response.headers.append("Set-Cookie", cookie)
-    return response
+    const saved = await saveAnalysis(analysis, principal.userId, saveToHistory)
+    return Response.json({ analysis: saved }, { status: 201 })
   },
   { rateLimit: { name: "analyze", limit: 20, windowMs: 60_000 } },
 )

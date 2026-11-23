@@ -51,22 +51,35 @@ components:
 paths:
   /api/health:
     get:
-      summary: Check backend and ExifTool status
+      summary: Check backend status
       responses:
         "200": { description: Service is healthy }
-        "503": { description: A required dependency is unavailable }
   /api/images/analyze:
     post:
-      summary: Validate an image, extract metadata, and analyze it
+      summary: Analyze ExifTool metadata extracted in the browser
       requestBody:
         required: true
         content:
-          multipart/form-data:
+          application/json:
             schema:
               type: object
-              required: [file]
+              required: [record, tempName, filename, mimeType, size, header]
               properties:
-                file: { type: string, format: binary }
+                record:
+                  type: object
+                  description: ExifTool JSON output for one file.
+                tempName:
+                  type: string
+                  description: Name given to ExifTool, scrubbed from the output.
+                filename: { type: string }
+                mimeType: { type: string }
+                size: { type: integer }
+                header:
+                  type: string
+                  description: Base64 of the file's first 64 bytes.
+                decoded:
+                  type: boolean
+                  description: Whether the browser could decode the image.
                 lastModified:
                   type: integer
                   description: Browser-reported file modification time in epoch ms.
@@ -75,21 +88,74 @@ paths:
                   description: Signed-in users only. Defaults to false.
       responses:
         "201":
-          description: Analysis created. `preview` is transient and is not stored.
+          description: Analysis created. Temporary analyses are not stored on the server.
           content:
             application/json:
               schema:
                 type: object
                 properties:
                   analysis: { $ref: "#/components/schemas/Analysis" }
-                  preview: { type: [string, "null"] }
         "400": { $ref: "#/components/responses/Error" }
         "413": { $ref: "#/components/responses/Error" }
         "415": { $ref: "#/components/responses/Error" }
         "422": { $ref: "#/components/responses/Error" }
         "429": { $ref: "#/components/responses/Error" }
+  /api/images/report:
+    post:
+      summary: Build a report for a temporary analysis held by the browser
+      parameters:
+        - name: format
+          in: query
+          required: true
+          schema: { type: string, enum: [json, csv, pdf] }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [analysis]
+              properties:
+                analysis: { $ref: "#/components/schemas/Analysis" }
+      responses:
+        "200": { description: Report file }
+        "400": { $ref: "#/components/responses/Error" }
+        "413": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+  /api/images/geocode:
+    post:
+      summary: Look up a place name for a temporary analysis
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [latitude, longitude]
+              properties:
+                latitude: { type: number }
+                longitude: { type: number }
+      responses:
+        "200": { description: Place found }
+        "422": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+  /api/images/vision:
+    post:
+      summary: Run AI visual analysis on a temporary analysis preview
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [preview]
+              properties:
+                preview: { type: string, format: binary }
+      responses:
+        "200": { description: Visual observations }
+        "400": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
         "503": { $ref: "#/components/responses/Error" }
-        "504": { $ref: "#/components/responses/Error" }
   /api/images/{id}:
     parameters: [{ $ref: "#/components/parameters/id" }]
     get:

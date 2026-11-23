@@ -1,3 +1,5 @@
+import type { ImageAnalysis } from "@/types/analysis"
+
 /** Keeps the transient preview in this browser tab only. It is never stored on the server. */
 const memory = new Map<string, string>()
 const key = (id: string) => `metalens-preview:${id}`
@@ -33,13 +35,59 @@ export function removePreview(id: string) {
 
 export function clearPreviews() {
   memory.clear()
+  analyses.clear()
   try {
     for (const name of Object.keys(sessionStorage)) {
-      if (name.startsWith("metalens-preview:")) sessionStorage.removeItem(name)
+      if (
+        name.startsWith("metalens-preview:") ||
+        name.startsWith("metalens-analysis:")
+      ) {
+        sessionStorage.removeItem(name)
+      }
     }
   } catch {
     // Nothing to clean up.
   }
+}
+
+/** Temporary analyses live only in this browser tab and expire on their own. */
+const analyses = new Map<string, ImageAnalysis>()
+const analysisKey = (id: string) => `metalens-analysis:${id}`
+
+export function saveLocalAnalysis(analysis: ImageAnalysis) {
+  analyses.set(analysis.id, analysis)
+  try {
+    sessionStorage.setItem(analysisKey(analysis.id), JSON.stringify(analysis))
+  } catch {
+    // Storage may be full or blocked. The in-memory copy still works.
+  }
+}
+
+export function removeLocalAnalysis(id: string) {
+  analyses.delete(id)
+  try {
+    sessionStorage.removeItem(analysisKey(id))
+  } catch {
+    // Nothing to clean up.
+  }
+}
+
+export function getLocalAnalysis(id: string) {
+  let analysis = analyses.get(id) ?? null
+  if (!analysis) {
+    try {
+      const stored = sessionStorage.getItem(analysisKey(id))
+      analysis = stored ? (JSON.parse(stored) as ImageAnalysis) : null
+    } catch {
+      return null
+    }
+  }
+  if (analysis?.expiresAt && Date.parse(analysis.expiresAt) <= Date.now()) {
+    removeLocalAnalysis(id)
+    removePreview(id)
+    return null
+  }
+  return analysis
 }
 
 /** Builds a local preview for formats the browser can show but the server cannot decode. */

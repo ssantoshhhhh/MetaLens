@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
+import { api } from "@/lib/api-client"
 import { NOT_AVAILABLE } from "@/lib/format"
 import {
   METADATA_CATEGORIES,
@@ -119,10 +120,11 @@ export function MetadataExplorer({ analysis }: { analysis: ImageAnalysis }) {
               )}
               {view === "fields" ? "Raw JSON" : "Fields"}
             </Button>
-            <Button asChild variant="outline">
-              <a href={`/api/images/${analysis.id}/metadata?download=1`}>
-                <Download aria-hidden /> JSON
-              </a>
+            <Button
+              variant="outline"
+              onClick={() => api.downloadMetadata(analysis)}
+            >
+              <Download aria-hidden /> JSON
             </Button>
           </div>
         </div>
