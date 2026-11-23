@@ -1,0 +1,28 @@
+services:
+  app:
+    build: .
+    ports: ["3000:3000"]
+    env_file:
+      - path: .env
+        required: false
+    tmpfs: [/tmp]
+    security_opt: ["no-new-privileges:true"]
+    restart: unless-stopped
+
+  # Start with: docker compose --profile history up --build
+  db:
+    profiles: [history]
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: metalens
+      POSTGRES_DB: metalens
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes: [db-data:/var/lib/postgresql/data]
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U metalens]
+      interval: 5s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  db-data:

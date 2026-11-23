@@ -1,0 +1,47 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id           String            @id @default(uuid()) @db.Uuid
+  name         String
+  email        String            @unique
+  passwordHash String
+  createdAt    DateTime          @default(now())
+  history      AnalysisHistory[]
+}
+
+/// Sensitive data (GPS, serial numbers, all raw tags) exists only in encryptedPayload.
+/// Image binaries are never stored.
+model ImageAnalysis {
+  id               String           @id @db.Uuid
+  originalFilename String
+  mimeType         String
+  fileSize         Int
+  imageWidth       Int?
+  imageHeight      Int?
+  imageFormat      String
+  deviceMake       String?
+  deviceModel      String?
+  captureDate      String?
+  hasGps           Boolean          @default(false)
+  encryptedPayload String
+  createdAt        DateTime         @default(now())
+  history          AnalysisHistory?
+}
+
+model AnalysisHistory {
+  id              String        @id @default(uuid()) @db.Uuid
+  userId          String        @db.Uuid
+  imageAnalysisId String        @unique @db.Uuid
+  createdAt       DateTime      @default(now())
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  imageAnalysis   ImageAnalysis @relation(fields: [imageAnalysisId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt(sort: Desc)])
+}

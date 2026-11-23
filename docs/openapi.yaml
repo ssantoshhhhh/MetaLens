@@ -1,0 +1,183 @@
+openapi: 3.1.0
+info:
+  title: MetaLens API
+  version: 1.0.0
+  description: >
+    Extracts and analyzes image metadata. Analyses are private to the browser
+    session (ml_owner cookie) or signed-in user (ml_session cookie) that created
+    them. Requests for another owner's analysis return 404.
+servers:
+  - url: http://localhost:3000
+components:
+  parameters:
+    id:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string }
+            message: { type: string }
+    Analysis:
+      type: object
+      description: Full shape is defined in src/types/analysis.ts.
+      required:
+        [
+          id,
+          createdAt,
+          file,
+          device,
+          dateTime,
+          location,
+          camera,
+          image,
+          fields,
+          analysis,
+        ]
+  responses:
+    Error:
+      description: Request failed
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+paths:
+  /api/health:
+    get:
+      summary: Check backend and ExifTool status
+      responses:
+        "200": { description: Service is healthy }
+        "503": { description: A required dependency is unavailable }
+  /api/images/analyze:
+    post:
+      summary: Validate an image, extract metadata, and analyze it
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary }
+                lastModified:
+                  type: integer
+                  description: Browser-reported file modification time in epoch ms.
+                saveToHistory:
+                  type: boolean
+                  description: Signed-in users only. Defaults to false.
+      responses:
+        "201":
+          description: Analysis created. `preview` is transient and is not stored.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  analysis: { $ref: "#/components/schemas/Analysis" }
+                  preview: { type: [string, "null"] }
+        "400": { $ref: "#/components/responses/Error" }
+        "413": { $ref: "#/components/responses/Error" }
+        "415": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+        "504": { $ref: "#/components/responses/Error" }
+  /api/images/{id}:
+    parameters: [{ $ref: "#/components/parameters/id" }]
+    get:
+      summary: Get an analysis
+      responses:
+        "200": { description: The analysis }
+        "404": { $ref: "#/components/responses/Error" }
+    delete:
+      summary: Delete an analysis
+      responses:
+        "204": { description: Deleted }
+        "404": { $ref: "#/components/responses/Error" }
+  /api/images/{id}/metadata:
+    parameters: [{ $ref: "#/components/parameters/id" }]
+    get:
+      summary: Get complete metadata
+      parameters:
+        - { name: download, in: query, schema: { type: string, enum: ["1"] } }
+      responses:
+        "200": { description: Fields and raw grouped metadata }
+        "404": { $ref: "#/components/responses/Error" }
+  /api/images/{id}/report:
+    parameters: [{ $ref: "#/components/parameters/id" }]
+    get:
+      summary: Download a report
+      parameters:
+        - name: format
+          in: query
+          required: true
+          schema: { type: string, enum: [json, csv, pdf] }
+      responses:
+        "200": { description: Report file }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+  /api/images/{id}/geocode:
+    parameters: [{ $ref: "#/components/parameters/id" }]
+    post:
+      summary: Reverse geocode embedded GPS. Sends coordinates to Nominatim.
+      responses:
+        "200": { description: Place details }
+        "404": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+        "502": { $ref: "#/components/responses/Error" }
+  /api/images/{id}/vision:
+    parameters: [{ $ref: "#/components/parameters/id" }]
+    post:
+      summary: Optional AI visual analysis. Sends a metadata-free preview to Claude.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [preview]
+              properties:
+                preview: { type: string, format: binary }
+      responses:
+        "200": { description: Visual observations }
+        "404": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+  /api/history:
+    get:
+      summary: List the signed-in user's saved analyses
+      parameters:
+        - { name: q, in: query, schema: { type: string } }
+      responses:
+        "200": { description: History items }
+        "401": { $ref: "#/components/responses/Error" }
+  /api/auth/me:
+    get:
+      summary: Get auth availability and current user
+      responses:
+        "200": { description: Session state }
+  /api/auth/register:
+    post:
+      summary: Create an account
+      responses:
+        "201": { description: Signed in }
+        "400": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+  /api/auth/login:
+    post:
+      summary: Sign in
+      responses:
+        "200": { description: Signed in }
+        "401": { $ref: "#/components/responses/Error" }
+  /api/auth/logout:
+    post:
+      summary: Sign out
+      responses:
+        "204": { description: Signed out }
