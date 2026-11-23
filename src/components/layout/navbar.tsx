@@ -1,5 +1,6 @@
 import Link from "next/link"
 import { SessionNav } from "@/components/auth/session-nav"
+import { GitHubIcon } from "@/components/brand/github-icon"
 import { Logo } from "@/components/brand/logo"
 import { ThemeToggle } from "@/components/theme/theme-toggle"
 import { Button } from "@/components/ui/button"
@@ -23,6 +24,17 @@ export function Navbar() {
         </nav>
         <div className="flex items-center gap-1 sm:gap-2">
           <SessionNav />
+          <Button asChild variant="ghost" size="icon">
+            <a
+              href={siteConfig.repositoryUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="View MetaLens on GitHub"
+              title="View on GitHub"
+            >
+              <GitHubIcon className="size-4" />
+            </a>
+          </Button>
           <ThemeToggle />
           <Button asChild size="sm" className="hidden sm:inline-flex">
             <Link href="/#upload">Analyze Image</Link>
